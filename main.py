@@ -1,10 +1,10 @@
 import pandas as pd
 from langchain_community.llms import Ollama
+from pydantic import BaseModel
 from fastapi import FastAPI, File, UploadFile, HTTPException, status
-from starlette.templating import Jinja2Templates
+import json
 from starlette.responses import HTMLResponse
 import io
-import csv
 
 html_template = """
 <!DOCTYPE html>
@@ -41,22 +41,28 @@ async def read_root():
      return html_template
 
 @app.post("/upload")
-async def upload_csv(file: UploadFile = File(...)):
+async def upload_csv(file: UploadFile = File(None)):
      """Accepts a CSV file, processes it, and returns AI-generated EDA code and insights."""
      #validating the file type
      if not file.filename.endswith('.csv'):
          raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid file type. Please upload a CSV file.")
      #reading the file content
      content = await file.read()
-     #loading the content into a pandas DataFrame
-    sio = io.StringIO(content.decode('utf-8'))
-    uploaded_file = pd.read_csv(sio)
-     #generating EDA code and insights using the local AI model
-     if uploaded_file is not None:
+     df = pd.read_csv(io.BytesIO(content))
+     #Equivalent of streamlit's st.dataframe(df.head())
+     preview = df.head().to_dict(orient="records")
+     schema_info = {
+          "filename": file.filename,
+          "preview": preview,
+          "dtypes": df.dtypes.astype(str).to_dict(),
+          "missing values": df.isnull().sum().to_dict(),
+          "columns": df.columns.tolist(),
+          "shape": df.shape}
+     return{"raw data preview": schema_info}
 
-
-     await file.close()
-    return JSONResponse(content={"message": "File uploaded and processed successfully. AI-generated EDA code and insights will be returned here."})
-
-
-
+class AnalysisRequest(BaseModel):
+     schema_info: dict
+llm = Ollama(model = "mistral")
+@app.post("/analyze")
+async def analyze_data(request: AnalysisRequest):
+     return {"message": "Analysis complete"}

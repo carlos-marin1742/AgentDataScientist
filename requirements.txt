@@ -1,0 +1,6 @@
+streamlit
+pandas
+matpotlib
+seaborn
+langchain
+langchain-community
