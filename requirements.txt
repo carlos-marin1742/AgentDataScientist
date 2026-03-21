@@ -1,6 +1,7 @@
 streamlit
 pandas
-matpotlib
+matplotlib
 seaborn
 langchain
 langchain-community
+langchain_groq
