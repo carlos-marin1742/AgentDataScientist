@@ -10,8 +10,9 @@ import io
 import re
 
 # --- Instantiate LLM ---
-load_dotenv()
-api_key = os.getenv("GROQ_API_KEY")
+#load_dotenv()
+#api_key = os.getenv("GROQ_API_KEY")
+api_key = st.secrets["GROQ_API_KEY"]
 llm = ChatGroq(
     model="llama-3.3-70b-versatile",
     api_key=api_key,
