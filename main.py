@@ -1,145 +1,39 @@
 import io
 import json
-
+import os
+from dotenv import load_dotenv
+import uvicorn
 import pandas as pd
 from fastapi import FastAPI, File, HTTPException, UploadFile, status
-from langchain_community.llms import Ollama
+from fastapi.middleware.cors import CORSMiddleware
+from langchain_groq import ChatGroq
 from pydantic import BaseModel
 from starlette.responses import HTMLResponse
 
-# ── HTML Template ─────────────────────────────────────────────────────────────
 
-HTML_TEMPLATE = """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Agent Data Scientist</title>
-    <style>
-        body { font-family: sans-serif; max-width: 860px; margin: 40px auto; padding: 0 20px; background: #f9f9f9; }
-        h1 { color: #222; }
-        h3 { color: #555; font-weight: normal; }
-        section { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 24px; margin-bottom: 24px; }
-        section h2 { margin-top: 0; font-size: 1.1rem; color: #333; }
-        button { background: #2563eb; color: white; border: none; padding: 8px 18px; border-radius: 5px; cursor: pointer; font-size: 0.95rem; }
-        button:hover { background: #1d4ed8; }
-        button:disabled { background: #93c5fd; cursor: not-allowed; }
-        pre { background: #f1f5f9; padding: 16px; border-radius: 6px; overflow-x: auto; font-size: 0.82rem; white-space: pre-wrap; word-break: break-word; }
-        #insights-output { background: #f1f5f9; padding: 16px; border-radius: 6px; white-space: pre-wrap; font-size: 0.88rem; line-height: 1.6; }
-        .status { font-size: 0.85rem; color: #6b7280; margin-top: 8px; }
-        .error { color: #dc2626; }
-    </style>
-</head>
-<body>
-    <h1>Agent Data Scientist</h1>
-    <h3>Upload a CSV file and let local AI generate EDA code and statistical insights</h3>
-
-    <!-- Step 1: Upload CSV -->
-    <section>
-        <h2>Step 1 - Upload CSV</h2>
-        <input type="file" id="csvFile" accept=".csv">
-        <button onclick="uploadCSV()" style="margin-left:10px">Upload</button>
-        <p class="status" id="upload-status"></p>
-        <pre id="upload-result" style="display:none"></pre>
-    </section>
-
-    <!-- Step 2: Generate Insights -->
-    <section>
-        <h2>Step 2 - Generate Insights</h2>
-        <p style="font-size:0.9rem; color:#555; margin-top:0">Upload a CSV first, then click below to run the AI insights report.</p>
-        <button id="insights-btn" onclick="generateInsights()" disabled>Generate Insights</button>
-        <p class="status" id="insights-status"></p>
-        <div id="insights-output" style="display:none"></div>
-    </section>
-
-    <script>
-        let previewData = null;
-
-        async function uploadCSV() {
-            const fileInput = document.getElementById("csvFile");
-            const statusEl = document.getElementById("upload-status");
-            const resultEl = document.getElementById("upload-result");
-
-            if (!fileInput.files.length) {
-                statusEl.textContent = "Please select a CSV file first.";
-                return;
-            }
-
-            statusEl.className = "status";
-            statusEl.textContent = "Uploading...";
-            const formData = new FormData();
-            formData.append("file", fileInput.files[0]);
-
-            try {
-                const res = await fetch("/upload", { method: "POST", body: formData });
-                const text = await res.text();
-
-                let data;
-                try { data = JSON.parse(text); }
-                catch { throw new Error("Server returned non-JSON: " + text.slice(0, 200)); }
-
-                if (!res.ok) throw new Error(data.detail || "Upload failed.");
-
-                previewData = data.raw_data_preview.preview;
-                resultEl.textContent = JSON.stringify(data, null, 2);
-                resultEl.style.display = "block";
-                statusEl.textContent = "Uploaded: " + data.raw_data_preview.filename
-                    + " - " + data.raw_data_preview.shape[0] + " rows x " + data.raw_data_preview.shape[1] + " cols";
-                document.getElementById("insights-btn").disabled = false;
-                document.getElementById("insights-status").textContent = "Ready to generate insights.";
-            } catch (err) {
-                statusEl.className = "status error";
-                statusEl.textContent = "Error: " + err.message;
-            }
-        }
-
-        async function generateInsights() {
-            if (!previewData) return;
-
-            const btn = document.getElementById("insights-btn");
-            const statusEl = document.getElementById("insights-status");
-            const outputEl = document.getElementById("insights-output");
-
-            btn.disabled = true;
-            statusEl.className = "status";
-            statusEl.textContent = "Generating insights... this may take a moment.";
-            outputEl.style.display = "none";
-
-            try {
-                const res = await fetch("/generate-insights", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ preview: previewData }),
-                });
-
-                const text = await res.text();
-
-                let data;
-                try { data = JSON.parse(text); }
-                catch { throw new Error("Server returned non-JSON: " + text.slice(0, 300)); }
-
-                if (!res.ok) throw new Error(data.detail || "Insights generation failed.");
-
-                outputEl.textContent = data.insights;
-                outputEl.style.display = "block";
-                statusEl.textContent = "Insights generated.";
-            } catch (err) {
-                statusEl.className = "status error";
-                statusEl.textContent = "Error: " + err.message;
-            } finally {
-                btn.disabled = false;
-            }
-        }
-    </script>
-</body>
-</html>
-"""
 
 # ── App & LLM Setup ───────────────────────────────────────────────────────────
-
 app = FastAPI()
-llm = Ollama(model="mistral")
+# --- Instantiate LLM ---
+load_dotenv()
+api_key = os.getenv("GROQ_API_KEY")
+llm = ChatGroq(
+    model="llama-3.3-70b-versatile",
+    api_key=api_key,
+    temperature=0)
+# ── CORS SET UP AND allowing react server ─────────────────────────────────────────────────────────────
+origins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+]
 
-
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 # ── Pydantic Models ───────────────────────────────────────────────────────────
 
 class AnalysisRequest(BaseModel):
@@ -154,7 +48,7 @@ class InsightsRequest(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
-    return HTML_TEMPLATE
+    return {"status": "running", "version": "1.0.0"}
 
 
 @app.post("/upload")
@@ -343,3 +237,5 @@ CONSTRAINTS:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error generating insights: {str(e)}",
         )
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0", port=8000)
