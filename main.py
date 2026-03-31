@@ -21,7 +21,7 @@ llm = ChatGroq(
     model="llama-3.3-70b-versatile",
     api_key=api_key,
     temperature=0)
-# ── CORS SET UP AND allowing react server ─────────────────────────────────────────────────────────────
+# ── CORS SET UP AND allowing react server ────────────────────────────────────
 origins = [
     "http://localhost:5173",
     "http://localhost:3000",
