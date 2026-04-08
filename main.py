@@ -1,7 +1,9 @@
+import code
 import io
 import json
 import os
 from dotenv import load_dotenv
+import re
 import uvicorn
 import pandas as pd
 from fastapi import FastAPI, File, HTTPException, UploadFile, status
@@ -9,6 +11,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from langchain_groq import ChatGroq
 from pydantic import BaseModel
 from starlette.responses import HTMLResponse
+from fastapi.responses import JSONResponse
+import base64
+import contextlib
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 
 
@@ -43,6 +51,10 @@ class AnalysisRequest(BaseModel):
 class InsightsRequest(BaseModel):
     preview: list
 
+class RunRequest(BaseModel):
+    code: str
+    preview: list
+
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
@@ -63,16 +75,20 @@ async def upload_csv(file: UploadFile = File(None)):
     content = await file.read()
     df = pd.read_csv(io.BytesIO(content))
 
+        # Convert NaN → None so JSON serialization doesn't choke
+    preview = json.loads(df.head().to_json(orient="records"))
+    missing_values = json.loads(df.isnull().sum().to_json())
+
     schema_info = {
         "filename": file.filename,
-        "preview": df.head().to_dict(orient="records"),
+        "preview": preview,
         "dtypes": df.dtypes.astype(str).to_dict(),
-        "missing_values": df.isnull().sum().to_dict(),
+        "missing_values": missing_values,
         "columns": df.columns.tolist(),
-        "shape": df.shape,
+        "shape": list(df.shape),
     }
 
-    return {"raw_data_preview": schema_info}
+    return JSONResponse(content={"raw_data_preview": schema_info})
 
 
 @app.post("/generate-analysis")
@@ -135,7 +151,13 @@ CONSTRAINTS:
 """
 
     try:
-        generated_code = llm.invoke(prompt)
+        generated_code = llm.invoke(prompt).content
+            # Strip markdown fences
+        if generated_code.startswith("```"):
+            generated_code = re.sub(r"^```(?:python)?\n?", "", generated_code)
+            generated_code = re.sub(r"\n?```$", "", generated_code)
+        generated_code = generated_code.strip()
+
         return {"generated_code": generated_code}
     except Exception as e:
         raise HTTPException(
@@ -226,7 +248,7 @@ CONSTRAINTS:
 - Prioritize actionability: every observation should connect to a decision or next step
 """
 
-        insights = llm.invoke(insight_prompt)
+        insights = llm.invoke(insight_prompt).content
         return {
             "insights": insights,
             "summary_stats": json.loads(df.describe(include="all").to_json()),
@@ -236,6 +258,68 @@ CONSTRAINTS:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error generating insights: {str(e)}",
+        )
+
+@app.post("/run-analysis")
+async def run_analysis(request: RunRequest):
+    try:
+        df = pd.DataFrame(request.preview)
+        plots = []
+        console_output = io.StringIO()
+
+        # Strip markdown fences if LLM included them
+        code = request.code
+        if code.startswith("```"):
+            code = re.sub(r"^```(?:python)?\n?", "", code)
+            code = re.sub(r"\n?```$", "", code)
+        code = code.strip()
+
+        #Temp code block remove after fixing
+        print("=== FIRST 200 CHARS OF CODE ===")
+        print(repr(code[:200]))
+        print("================================")
+
+        def capture_show():
+            fig = plt.gcf()
+            if fig.get_axes():  # only save if figure has actual content
+                buf = io.BytesIO()
+                fig.savefig(buf, format="png", bbox_inches="tight", dpi=100)
+                buf.seek(0)
+                plots.append(base64.b64encode(buf.read()).decode("utf-8"))
+            plt.clf()
+            plt.close("all")
+
+        original_show = plt.show
+        plt.show = capture_show
+
+        try:
+            with contextlib.redirect_stdout(console_output):
+                exec(request.code, {
+                    "df": df,
+                    "plt": plt,
+                    "pd": pd,
+                    "__builtins__": __builtins__
+                })
+        except Exception as exec_error:
+            return JSONResponse(content={
+                "plots": plots,
+                "console": console_output.getvalue(),
+                "exec_error": str(exec_error)
+            })
+        finally:
+            plt.show = original_show
+            plt.close("all")
+
+        return JSONResponse(content={
+            "plots": plots,
+            "console": console_output.getvalue(),
+            "exec_error": None
+        })
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error running analysis: {str(e)}"
         )
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0", port=8000)

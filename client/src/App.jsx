@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import ReactMarkdown from "react-markdown";
 
 const STATUS = { IDLE: "idle", LOADING: "loading", SUCCESS: "success", ERROR: "error" };
 
@@ -10,6 +11,10 @@ export default function AgentDataScientist() {
   const [previewData, setPreviewData] = useState(null);
   const [insightsReady, setInsightsReady] = useState(false);
   const fileInputRef = useRef(null);
+  const [analysisCode, setAnalysisCode] = useState("");
+  const [plots, setPlots] = useState([]);
+  const [consoleOutput, setConsoleOutput] = useState("");
+  const [vizStatus, setVizStatus] = useState({ type: STATUS.IDLE, message: "" });
 
   async function uploadCSV() {
     const file = fileInputRef.current?.files?.[0];
@@ -75,6 +80,45 @@ export default function AgentDataScientist() {
       setInsightsStatus({ type: STATUS.ERROR, message: "Error: " + err.message });
     }
   }
+// generating code and running it are now separate steps, since running the code can take a while and we want to show the generated code to the user before they run it
+  async function generateAndRunAnalysis() {
+  if (!previewData) return;
+  setVizStatus({ type: STATUS.LOADING, message: "Generating and running EDA code..." });
+  setPlots([]);
+
+  try {
+    // Step 1: get the code
+    const codeRes = await fetch("/generate-analysis", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ schema_info: uploadResult.raw_data_preview }),
+    });
+    const codeData = await codeRes.json();
+    setAnalysisCode(codeData.generated_code);
+
+    // Step 2: run it
+    const runRes = await fetch("/run-analysis", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: codeData.generated_code, preview: previewData }),
+    });
+    //Adding lines for debugging server response issues
+    const rawText = await runRes.text();
+    console.log("RAW RESPONSE:", rawText);
+
+    const runData = JSON.parse(rawText);
+    if (runData.exec_error) {
+    setVizStatus({ type: STATUS.ERROR, message: `Code error: ${runData.exec_error}` });
+    } else {
+    setPlots(runData.plots ?? []);
+    setConsoleOutput(runData.console);
+    setVizStatus({ type: STATUS.SUCCESS, message: `Generated ${runData.plots.length} plots.` });
+}
+
+  } catch (err) {
+    setVizStatus({ type: STATUS.ERROR, message: "Error: " + err.message });
+  }
+}
 
   return (
     <div style={styles.page}>
@@ -150,9 +194,52 @@ export default function AgentDataScientist() {
         )}
 
         {insights && (
-          <div style={styles.insightsBox}>{insights}</div>
+          <div style={styles.insightsBox}>
+            <ReactMarkdown>{insights}</ReactMarkdown>
+          </div>
         )}
       </section>
+
+      {/* Step 3 */}
+<section style={styles.card}>
+  <StepLabel number={3} />
+  <h2 style={styles.cardTitle}>EDA Visualizations</h2>
+  <p style={styles.hint}>Generate and run EDA code to see charts and statistics.</p>
+
+  <button
+    style={{ ...styles.btn, opacity: insightsReady ? 1 : 0.5 }}
+    onClick={generateAndRunAnalysis}
+    disabled={!insightsReady || vizStatus.type === STATUS.LOADING}
+  >
+    {vizStatus.type === STATUS.LOADING ? "Running…" : "Generate & Run EDA"}
+  </button>
+
+  {vizStatus.message && (
+    <p style={{ ...styles.status, color: vizStatus.type === STATUS.ERROR ? "#ef4444" : vizStatus.type === STATUS.SUCCESS ? "#10b981" : "#6b7280" }}>
+      {vizStatus.message}
+    </p>
+  )}
+
+  {analysisCode && (
+    <details style={{ marginTop: 14 }}>
+      <summary style={{ cursor: "pointer", fontSize: "0.88rem", color: "#2563eb" }}>View generated code</summary>
+      <pre style={styles.pre}>{analysisCode}</pre>
+    </details>
+  )}
+
+  {consoleOutput && (
+    <pre style={{ ...styles.pre, marginTop: 14 }}>{consoleOutput}</pre>
+  )}
+
+  {plots.map((b64, i) => (
+    <img
+      key={i}
+      src={`data:image/png;base64,${b64}`}
+      alt={`EDA plot ${i + 1}`}
+      style={{ width: "100%", borderRadius: 8, marginTop: 16, border: "1px solid #e2e8f0" }}
+    />
+  ))}
+</section>
     </div>
   );
 }
@@ -312,7 +399,6 @@ const styles = {
     border: "1px solid #e2e8f0",
     padding: 16,
     borderRadius: 8,
-    whiteSpace: "pre-wrap",
     fontSize: "0.88rem",
     lineHeight: 1.7,
     marginTop: 14,

@@ -6,9 +6,10 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      '/upload': 'http://localhost:8000',
-      '/generate-insights': 'http://localhost:8000',
-      '/generate-analysis': 'http://localhost:8000',
+      "/run-analysis": "http://localhost:8000",
+      "/upload": "http://localhost:8000",
+      "/generate-insights": "http://localhost:8000",
+      "/generate-analysis": "http://localhost:8000",
     },
   },
 })
