@@ -271,11 +271,6 @@ async def run_analysis(request: RunRequest):
             code = re.sub(r"\n?```$", "", code)
         code = code.strip()
 
-        #Temp code block remove after fixing
-        print("=== FIRST 200 CHARS OF CODE ===")
-        print(repr(code[:200]))
-        print("================================")
-
         def capture_show():
             fig = plt.gcf()
             if fig.get_axes():  # only save if figure has actual content
