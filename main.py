@@ -4,20 +4,22 @@ import json
 import os
 from dotenv import load_dotenv
 import re
+from starlette.staticfiles import StaticFiles
 import uvicorn
 import pandas as pd
 from fastapi import FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_groq import ChatGroq
 from pydantic import BaseModel
-from starlette.responses import HTMLResponse
+from starlette.responses import FileResponse, HTMLResponse
 from fastapi.responses import JSONResponse
 import base64
 import contextlib
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 
 # ── App & LLM Setup ───────────────────────────────────────────────────────────
@@ -321,5 +323,13 @@ async def run_analysis(request: RunRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error running analysis: {str(e)}"
         )
+
+
+app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
+
+@app.get("/{full_path:path}")
+async def serve_react(full_path: str):
+    return FileResponse("dist/index.html")
+ 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0", port=int(os.environ.get("PORT", 8000)))
