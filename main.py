@@ -320,11 +320,11 @@ async def run_analysis(request: RunRequest):
         )
 
 
-app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
+app.mount("/assets", StaticFiles(directory="client/dist/assets"), name="assets")
 
 @app.get("/{full_path:path}")
 async def serve_react(full_path: str):
-    return FileResponse("dist/index.html")
+    return FileResponse("client/dist/index.html")
  
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0", port=int(os.environ.get("PORT", 8000)))
