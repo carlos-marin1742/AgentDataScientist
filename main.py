@@ -11,7 +11,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_groq import ChatGroq
 from pydantic import BaseModel
-from starlette.responses import FileResponse, HTMLResponse
+from starlette.responses import FileResponse
 from fastapi.responses import JSONResponse
 import base64
 import contextlib
@@ -59,11 +59,6 @@ class RunRequest(BaseModel):
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
-
-@app.get("/", response_class=HTMLResponse)
-async def read_root():
-    return {"status": "running", "version": "1.0.0"}
-
 
 @app.post("/upload")
 async def upload_csv(file: UploadFile = File(None)):
