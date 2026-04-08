@@ -1,216 +1,140 @@
 # 🤖 Agent Data Scientist
 
-> **AI-powered exploratory data analysis — upload a CSV, get production-ready EDA code and strategic insights in seconds.**
+A full-stack AI-powered Exploratory Data Analysis (EDA) tool. Upload any CSV and get instant statistical insights, auto-generated EDA code, and live data visualizations — all powered by a LangChain + Groq LLM backend.
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://agentdatascientist.streamlit.app/)
-
-🎥 **Demo:** [Watch on YouTube](https://youtu.be/8WTSbu8Z5Vw)  
-🚀 **Live App:** [agentdatascientist.streamlit.app](https://agentdatascientist.streamlit.app/)
+**Live Demo:** [agentdatascientist.onrender.com](https://agentdatascientist.onrender.com)
 
 ---
 
-## 📌 Overview
+## Features
 
-**Agent Data Scientist** is an AI agent that acts as your personal data science assistant. Upload any CSV file and it will:
-
-1. **Generate executable EDA Python code** — structured, commented, and ready to run
-2. **Produce a strategic insights report** — statistical patterns, data quality issues, modeling recommendations, and quick wins
-3. **Render visualizations inline** — histograms, boxplots, correlation heatmaps, categorical distributions, and more
-
-Powered by **LLaMA 3.3 70B** via the Groq API and built with **LangChain** + **Streamlit**.
+- **CSV Upload & Preview** — Upload any CSV file and instantly see shape, column types, and missing value counts
+- **AI Insights Report** — Structured 7-section analytics report covering statistical patterns, data quality issues, correlation analysis, and modeling recommendations
+- **Auto-Generated EDA Code** — Production-ready Python EDA code generated from your dataset's schema
+- **Live Visualizations** — Execute the generated code server-side and render charts (distributions, correlation heatmaps, outlier boxplots, and more) directly in the browser
 
 ---
 
-## ✨ Features
+## Tech Stack
 
-| Feature | Description |
+| Layer | Technology |
 |---|---|
-| 📂 CSV Upload | Upload any tabular dataset via the sidebar |
-| 🧠 EDA Code Generation | LLM writes clean, section-structured Python EDA code |
-| 📊 Inline Visualizations | Run the generated code and render plots directly in the app |
-| 📝 Insights Report | Strategic analysis report with modeling recommendations |
-| ⚡ Groq-Powered | Ultra-fast inference via Groq's LPU hardware |
-| 🔁 Session State | Generated code and insights persist across UI interactions |
+| Frontend | React, react-markdown |
+| Backend | FastAPI, Uvicorn |
+| AI / LLM | LangChain, Groq (`llama-3.3-70b-versatile`) |
+| Data | Pandas, Matplotlib, Seaborn, NumPy |
+| Deployment | Render |
 
 ---
 
-## 🛠️ Tech Stack
+## Project Structure
 
-- **Frontend / UI:** Streamlit
-- **LLM Inference:** [Groq API](https://console.groq.com/) — `llama-3.3-70b-versatile`
-- **LLM Orchestration:** LangChain (`langchain-groq`)
-- **Data Processing:** Pandas, NumPy
-- **Visualization:** Matplotlib, Seaborn
-- **Deployment:** [Streamlit Community Cloud](https://streamlit.io/cloud)
-
----
-
-## 🚀 Getting Started
-
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/your-username/agent-data-scientist.git
-cd agent-data-scientist
+```
+AgentDataScientist/
+├── main.py               # FastAPI backend — all routes and LLM logic
+├── requirements.txt
+├── render.yaml
+├── .env                  # GROQ_API_KEY (not committed)
+└── client/               # React frontend
+    ├── src/
+    │   └── App.jsx
+    ├── dist/             # Production build served by FastAPI
+    └── package.json
 ```
 
-### 2. Install Dependencies
+---
+
+## How It Works
+
+The app runs as a single service on Render — FastAPI serves both the API and the React frontend from the `client/dist/` build.
+
+**Step 1 — Upload CSV**
+The `/upload` endpoint reads the file with pandas, extracts schema metadata (shape, dtypes, missing values, preview rows), and returns it as JSON. NaN values are sanitized via pandas' own JSON serializer before transmission.
+
+**Step 2 — Generate Insights**
+The `/generate-insights` endpoint passes a `df.describe()` summary to `llama-3.3-70b-versatile` via LangChain-Groq with a structured prompt that produces a 7-section analytics report covering dataset overview, statistical patterns, data quality issues, correlations, target variable analysis, modeling recommendations, and quick wins.
+
+**Step 3 — EDA Visualizations**
+The `/generate-analysis` endpoint generates executable Python EDA code from the dataset schema. The `/run-analysis` endpoint then executes that code server-side using `exec()`, intercepts each `plt.show()` call, captures the figure as a base64-encoded PNG, and returns the images to the React frontend for inline rendering.
+
+---
+
+## Local Development
+
+### Prerequisites
+
+- Python 3.10+
+- Node.js 18+
+- A [Groq API key](https://console.groq.com)
+
+### Backend Setup
 
 ```bash
+# Clone the repo
+git clone https://github.com/carlos-marin1742/AgentDataScientist.git
+cd AgentDataScientist
+
+# Create and activate a virtual environment
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# Install dependencies
 pip install -r requirements.txt
+
+# Add your Groq API key
+echo "GROQ_API_KEY=your_key_here" > .env
+
+# Start the backend
+uvicorn main:app --reload --port 8000
 ```
 
-### 3. Set Up Your API Key
-
-**For local development**, create a `.env` file in the project root:
-
-```env
-GROQ_API_KEY=your_groq_api_key_here
-```
-
-Then update `app.py` to use `dotenv` (the commented-out lines at the top of the file):
-
-```python
-from dotenv import load_dotenv
-load_dotenv()
-api_key = os.getenv("GROQ_API_KEY")
-```
-
-**For Streamlit Cloud deployment**, add your key via the Secrets Manager:
-
-```toml
-# .streamlit/secrets.toml
-GROQ_API_KEY = "your_groq_api_key_here"
-```
-
-### 4. Run the App
+### Frontend Setup
 
 ```bash
-streamlit run app.py
+cd client
+npm install
+npm run dev       # Development server on localhost:3000
 ```
 
-Navigate to `http://localhost:8501` in your browser.
+Or build for production (served by FastAPI):
 
----
-
-## 📋 How It Works
-
-```
-User uploads CSV
-       │
-       ▼
-Schema extracted (shape, dtypes, missing values, preview)
-       │
-       ▼
-┌──────────────────────────────────────────┐
-│         LLM Agent — Step 1               │
-│   Generate EDA Python Code               │
-│   (7 structured sections, executable)    │
-└──────────────────────────────────────────┘
-       │
-       ▼
-┌──────────────────────────────────────────┐
-│         LLM Agent — Step 2               │
-│   Generate Strategic Insights Report     │
-│   (7-section analysis, fully quantified) │
-└──────────────────────────────────────────┘
-       │
-       ▼
-User runs code → Plots render inline via st.pyplot()
+```bash
+cd client
+npm run build     # Outputs to client/dist/
 ```
 
----
-
-## 📊 Generated EDA Code Sections
-
-The agent produces well-structured code covering:
-
-1. **Setup & Data Validation** — imports, style config, shape/dtype summary
-2. **Summary Statistics** — `describe(include='all')`, skewness, kurtosis, unique counts
-3. **Missing Value Analysis** — heatmap + bar chart of missingness per column
-4. **Numerical Distributions** — histograms with KDE overlay + boxplots per column
-5. **Categorical Distributions** — sorted horizontal bar charts with value labels
-6. **Correlation Analysis** — annotated heatmap with upper triangle masked
-7. **Outlier Summary** — IQR-based outlier count and % affected per column
+Then visit `http://localhost:8000` to run the full app through FastAPI.
 
 ---
 
-## 📝 Insights Report Sections
+## API Routes
 
-The agent's strategic report covers:
-
-1. **Dataset Overview** — scope, red flags, modeling readiness
-2. **Key Statistical Patterns** — notable distributions, skewness flags, class imbalance
-3. **Data Quality Issues** — structured format: Issue / Affected Columns / Severity / Recommended Action
-4. **Correlations & Relationships** — strong correlations, multicollinearity risks, redundant features
-5. **Target Variable Analysis** — distribution, imbalance, suggested transformations (if applicable)
-6. **Modeling Recommendations** — feature engineering, preprocessing pipeline, algorithm fit, validation strategy
-7. **Quick Wins** — top 3–5 high-impact actions ranked by effort vs. impact
+| Method | Route | Description |
+|---|---|---|
+| `POST` | `/upload` | Upload CSV, returns schema metadata |
+| `POST` | `/generate-insights` | Generate AI insights report from preview data |
+| `POST` | `/generate-analysis` | Generate EDA Python code from schema |
+| `POST` | `/run-analysis` | Execute generated code, return base64 plot images |
 
 ---
 
-## 📁 Project Structure
+## Environment Variables
 
-```
-agent-data-scientist/
-├── app.py                  # Main Streamlit application
-├── requirements.txt        # Python dependencies
-├── .streamlit/
-│   └── secrets.toml        # API key (Streamlit Cloud, not committed)
-├── .env                    # API key (local dev, not committed)
-└── README.md
-```
+| Variable | Description |
+|---|---|
+| `GROQ_API_KEY` | Your Groq API key — get one at [console.groq.com](https://console.groq.com) |
 
 ---
 
-## ⚙️ Requirements
+## Deployment
 
-```txt
-streamlit
-langchain-groq
-langchain
-pandas
-matplotlib
-seaborn
-numpy
-python-dotenv
-sympy
-```
+This project is configured for one-click deployment on [Render](https://render.com) via `render.yaml`.
+
+The build process installs Python dependencies and starts Uvicorn. The React app must be built locally and committed to the repo (`client/dist/`) so FastAPI can serve it as static files.
 
 ---
 
-## 🔐 Security Notes
+## Author
 
-- Never commit your `.env` file or `secrets.toml` to version control
-- Add both to `.gitignore`:
-
-```
-.env
-.streamlit/secrets.toml
-```
-
----
-
-## 🧩 Future Improvements
-
-- [ ] Support for Excel (`.xlsx`) and JSON file uploads
-- [ ] Export insights report as PDF or Word document
-- [ ] Follow-up Q&A chat with the agent about the dataset
-- [ ] Automatic target column detection for supervised learning context
-- [ ] Support for additional LLM providers (Gemini, OpenAI)
-
----
-
-## 👨‍💻 Author
-
-**Carlos** — Full-Stack Developer & AI/ML Engineer  
-Clinical research background informing health tech AI applications.
-
-- Portfolio: [GitHub](https://github.com/carlos-marin1742)
-- LinkedIn: [linkedin.com/in/your-profile](https://www.linkedin.com/in/carlos-marin-90482b13b/)
-
----
-
-## 📄 License
-
-This project is open source and available under the [MIT License](LICENSE).
+**Carlos Marin** — Full-Stack AI Developer
+[GitHub](https://github.com/carlos-marin1742)
